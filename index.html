@@ -369,6 +369,8 @@
                     0<span class="sensor-unit">N</span>
                 </div>
                 <div class="timestamp" id="lastUpdate">Last updated: Never</div>
+                <!-- Add countdown display in the Current Reading card -->
+                <div class="timestamp" id="nextUpdate">Next update in: 15s</div>
                 <div class="stats">
                     <div class="stat-item">
                         <div class="stat-value" id="minValue">0</div>
@@ -438,17 +440,19 @@
         let lastValue = 0;
         let fetchInterval = null;
 
-        // ESP32 Configuration
-        const ESP32_IP = '10.78.195.245';
-        const ESP32_PORT = '80';
-        const FETCH_INTERVAL = 1000;
+        // ThingSpeak Configuration
+        const CHANNEL_ID = 3046880;  // your channel ID
+        const READ_API_KEY = "3EG4XHQFMNNT7KMX";  // your read key
+        const FETCH_INTERVAL = 15000; // ThingSpeak allows updates every 15s
+        let nextFetchCountdown = FETCH_INTERVAL / 1000;
+        let countdownInterval = null;
 
         // Debug function
         function debugLog(message) {
             const debugElement = document.getElementById('debugInfo');
             const timestamp = new Date().toLocaleTimeString();
             debugElement.textContent = `[${timestamp}] ${message}`;
-            console.log(`[ESP32] ${message}`);
+            console.log(`[ThingSpeak] ${message}`);
         }
 
         // Chart configuration
@@ -545,40 +549,89 @@
             }
         }
 
-        // Fetch data from ESP32
-        async function fetchESP32Data() {
-    const url = `http://${ESP32_IP}:${ESP32_PORT}/data`;
-
-    try {
-        debugLog(`Fetching: ${url}`);
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            mode: 'cors',
-            cache: 'no-cache'
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
-        // Expecting: { "force_N": 12.3, "resistance_kOhm": ..., "adc_value": ..., ... }
-        const value = data.force_N ?? data.value ?? 0;
-
-        if (typeof value === "number" && !isNaN(value)) {
-            updateConnectionStatus(true);
-            addSensorReading(value);
-        } else {
-            throw new Error("Invalid data structure");
+        // Update countdown display
+        function updateCountdown() {
+            const nextUpdateEl = document.getElementById('nextUpdate');
+            nextUpdateEl.textContent = `Next update in: ${nextFetchCountdown}s`;
+            if (nextFetchCountdown > 0) {
+                nextFetchCountdown--;
+            }
         }
-    } catch (err) {
-        debugLog(`Fetch failed: ${err.message}`);
-        updateConnectionStatus(false);
-    }
-}
 
-            // If all endpoints fail
+        // Start countdown timer
+        function startCountdown() {
+            nextFetchCountdown = FETCH_INTERVAL / 1000;
+            updateCountdown();
+            if (countdownInterval) clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                updateCountdown();
+                if (nextFetchCountdown <= 0) {
+                    nextFetchCountdown = FETCH_INTERVAL / 1000;
+                }
+            }, 1000);
+        }
+
+        // Fetch latest data from ThingSpeak
+        async function fetchThingSpeakData() {
+            const url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/fields/1.json?api_key=${READ_API_KEY}&results=1`;
+
+            try {
+                debugLog(`Fetching from ThingSpeak: ${url}`);
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+
+                if (data.feeds && data.feeds.length > 0) {
+                    const feed = data.feeds[0];
+                    const value = parseFloat(feed.field1);
+                    const timestamp = new Date(feed.created_at);
+
+                    if (!isNaN(value)) {
+                        updateConnectionStatus(true);
+                        addSensorReading(value, timestamp);
+                    }
+                } else {
+                    throw new Error("No data available");
+                }
+            } catch (err) {
+                debugLog(`ThingSpeak fetch failed: ${err.message}`);
+                updateConnectionStatus(false);
+            }
+        }
+
+        // Start ThingSpeak connection
+        function startThingSpeakConnection() {
+            debugLog('Starting ThingSpeak connection...');
             updateConnectionStatus(false);
-            debugLog('All endpoints failed');
+
+            if (fetchInterval) clearInterval(fetchInterval);
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            // Initial fetch
+            fetchThingSpeakData();
+            startCountdown();
+
+            // Polling
+            fetchInterval = setInterval(() => {
+                if (!isPaused) {
+                    fetchThingSpeakData();
+                    startCountdown();
+                }
+            }, FETCH_INTERVAL);
+        }
+
+        // Stop ThingSpeak connection
+        function stopThingSpeakConnection() {
+            if (fetchInterval) {
+                clearInterval(fetchInterval);
+                fetchInterval = null;
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            updateConnectionStatus(false);
+            debugLog('ThingSpeak connection stopped');
         }
 
         // Add new sensor reading
@@ -680,40 +733,15 @@
         // Test connection
         async function testConnection() {
             debugLog('Manual connection test started');
-            await fetchESP32Data();
+            await fetchThingSpeakData();
         }
 
-        // Start ESP32 connection
-        function startESP32Connection() {
-            debugLog('Starting ESP32 connection...');
-            updateConnectionStatus(false);
-            
-            if (fetchInterval) {
-                clearInterval(fetchInterval);
-            }
+        // Backward-compatible wrappers
+        function startESP32Connection() { startThingSpeakConnection(); }
 
-            // Initial fetch
-            fetchESP32Data();
-            
-            // Set up regular polling
-            fetchInterval = setInterval(() => {
-                if (!isPaused) {
-                    fetchESP32Data();
-                }
-            }, FETCH_INTERVAL);
-        }
+        function stopESP32Connection() { stopThingSpeakConnection(); }
 
-        // Stop ESP32 connection
-        function stopESP32Connection() {
-            if (fetchInterval) {
-                clearInterval(fetchInterval);
-                fetchInterval = null;
-            }
-            updateConnectionStatus(false);
-            debugLog('ESP32 connection stopped');
-        }
-
-        // Reconnect to ESP32
+        // Reconnect (ThingSpeak)
         function reconnectESP32() {
             debugLog('Manual reconnection requested');
             stopESP32Connection();
@@ -790,7 +818,7 @@
             
             // Small delay to ensure DOM is ready
             setTimeout(() => {
-                startESP32Connection();
+                startThingSpeakConnection();
             }, 500);
         }
 
@@ -801,10 +829,10 @@
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 debugLog('Page hidden - stopping connection');
-                stopESP32Connection();
+                stopThingSpeakConnection();
             } else {
                 debugLog('Page visible - starting connection');
-                startESP32Connection();
+                startThingSpeakConnection();
             }
         });
 
