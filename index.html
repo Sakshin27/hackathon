@@ -366,7 +366,7 @@
                     Current Reading
                 </h2>
                 <div class="sensor-value" id="currentValue">
-                    0<span class="sensor-unit">N</span>
+                    0<span class="sensor-unit">mmHg</span>
                 </div>
                 <div class="timestamp" id="lastUpdate">Last updated: Never</div>
                 <!-- Add countdown display in the Current Reading card -->
@@ -374,15 +374,15 @@
                 <div class="stats">
                     <div class="stat-item">
                         <div class="stat-value" id="minValue">0</div>
-                        <div class="stat-label">Min</div>
+                        <div class="stat-label">Min (mmHg)</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-value" id="maxValue">0</div>
-                        <div class="stat-label">Max</div>
+                        <div class="stat-label">Max (mmHg)</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-value" id="avgValue">0</div>
-                        <div class="stat-label">Avg</div>
+                        <div class="stat-label">Avg (mmHg)</div>
                     </div>
                 </div>
                 <div class="debug-info" id="debugInfo">
@@ -494,9 +494,11 @@
                     y: {
                         title: {
                             display: true,
-                            text: 'Force (N)'
+                            text: 'Pressure (mmHg)'
                         },
-                        beginAtZero: true,
+                        beginAtZero: false,
+                        min: 14,
+                        max: 22,
                         grid: {
                             color: 'rgba(0,0,0,0.1)'
                         }
@@ -671,11 +673,11 @@
                 setTimeout(() => valueEl.classList.remove('value-changed'), 300);
             }
 
-            valueEl.innerHTML = `${reading.value.toFixed(1)}<span class="sensor-unit">N</span>`;
+            valueEl.innerHTML = `${reading.value.toFixed(1)}<span class="sensor-unit">mmHg</span>`;
             timestampEl.textContent = `Last updated: ${reading.timestamp.toLocaleTimeString()}`;
             lastValue = reading.value;
             
-            debugLog(`Value updated: ${reading.value.toFixed(1)} N`);
+            debugLog(`Value updated: ${reading.value.toFixed(1)} mmHg`);
         }
 
         // Update chart
@@ -705,7 +707,7 @@
                 .map(item => `
                     <tr>
                         <td>${item.id}</td>
-                        <td>${item.value.toFixed(1)} N</td>
+                        <td>${item.value.toFixed(1)} mmHg</td>
                         <td>${item.timestamp.toLocaleTimeString()}</td>
                     </tr>
                 `).join('');
@@ -778,7 +780,7 @@
             updateStats();
             clearChart();
             
-            document.getElementById('currentValue').innerHTML = '0<span class="sensor-unit">N</span>';
+            document.getElementById('currentValue').innerHTML = '0<span class="sensor-unit">mmHg</span>';
             document.getElementById('lastUpdate').textContent = 'Last updated: Never';
             debugLog('History cleared');
         }
@@ -791,7 +793,7 @@
             }
 
             const csvContent = [
-                'ID,Value (N),Timestamp',
+                'ID,Value (mmHg),Timestamp',
                 ...sensorData.map(item => 
                     `${item.id},${item.value},${item.timestamp.toISOString()}`
                 )
