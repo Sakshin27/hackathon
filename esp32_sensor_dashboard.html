@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 FSR Sensor Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.1rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 45px rgba(0,0,0,0.15);
+        }
+
+        .card h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .current-reading {
+            text-align: center;
+        }
+
+        .sensor-value {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #10b981;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .sensor-unit {
+            font-size: 1.2rem;
+            color: #6b7280;
+            margin-left: 10px;
+        }
+
+        .timestamp {
+            color: #9ca3af;
+            font-size: 0.95rem;
+            margin-top: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #10b981;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.offline {
+            background-color: #ef4444;
+            animation: none;
+        }
+
+        .chart-container {
+            grid-column: 1 / -1;
+            height: 400px;
+            position: relative;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 350px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .historical-data {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .data-table th {
+            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+            font-weight: 600;
+            color: #374151;
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .connection-status.connected {
+            background: linear-gradient(135deg, #10b981, #059669);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .connection-status.disconnected {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+        }
+
+        @keyframes valueChange {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .value-changed {
+            animation: valueChange 0.3s ease-out;
+        }
+
+        .debug-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .sensor-value {
+                font-size: 3rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .btn {
+                text-align: center;
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .connection-status {
+                position: relative;
+                top: auto;
+                right: auto;
+                margin-bottom: 20px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status disconnected" id="connectionStatus">
+        <span class="status-indicator offline" id="statusIndicator"></span>
+        Connecting...
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>ESP32 FSR Sensor Dashboard</h1>
+            <p>Real-time Force Sensitive Resistor monitoring</p>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card current-reading">
+                <h2>
+                    <span class="status-indicator offline" id="sensorStatus"></span>
+                    Current Reading
+                </h2>
+                <div class="sensor-value" id="currentValue">
+                    0<span class="sensor-unit">N</span>
+                </div>
+                <div class="timestamp" id="lastUpdate">Last updated: Never</div>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="minValue">0</div>
+                        <div class="stat-label">Min</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="maxValue">0</div>
+                        <div class="stat-label">Max</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="avgValue">0</div>
+                        <div class="stat-label">Avg</div>
+                    </div>
+                </div>
+                <div class="debug-info" id="debugInfo">
+                    Status: Initializing...
+                </div>
+            </div>
+
+            <div class="card chart-container">
+                <h2>📊 Real-time Chart</h2>
+                <div class="controls">
+                    <button class="btn" onclick="clearChart()">Clear Chart</button>
+                    <button class="btn btn-secondary" onclick="togglePause()">
+                        <span id="pauseText">Pause</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="reconnectESP32()">🔄 Reconnect</button>
+                    <button class="btn btn-secondary" onclick="testConnection()">🧪 Test</button>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="sensorChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📋 Historical Data (Last 50)</h2>
+                <div class="controls">
+                    <button class="btn" onclick="downloadCSV()">📥 Download CSV</button>
+                    <button class="btn btn-secondary" onclick="clearHistory()">🗑️ Clear History</button>
+                </div>
+                <div class="historical-data">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Value</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historicalTable">
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: #9ca3af;">No data available</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Application state
+        let sensorData = [];
+        let chart = null;
+        let isPaused = false;
+        let isConnected = false;
+        let lastValue = 0;
+        let fetchInterval = null;
+
+        // ESP32 Configuration
+        const ESP32_IP = '10.78.195.245';
+        const ESP32_PORT = '80';
+        const FETCH_INTERVAL = 1000;
+
+        // Debug function
+        function debugLog(message) {
+            const debugElement = document.getElementById('debugInfo');
+            const timestamp = new Date().toLocaleTimeString();
+            debugElement.textContent = `[${timestamp}] ${message}`;
+            console.log(`[ESP32] ${message}`);
+        }
+
+        // Chart configuration
+        const chartConfig = {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'FSR Sensor Value',
+                    data: [],
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 300
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Force (N)'
+                        },
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        };
+
+        // Initialize chart
+        function initChart() {
+            try {
+                const ctx = document.getElementById('sensorChart').getContext('2d');
+                chart = new Chart(ctx, chartConfig);
+                debugLog('Chart initialized successfully');
+            } catch (error) {
+                debugLog(`Chart initialization failed: ${error.message}`);
+                console.error('Chart error:', error);
+            }
+        }
+
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            isConnected = connected;
+            const statusEl = document.getElementById('connectionStatus');
+            const indicatorEl = document.getElementById('statusIndicator');
+            const sensorStatusEl = document.getElementById('sensorStatus');
+
+            if (connected) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'connection-status connected';
+                if (indicatorEl) indicatorEl.className = 'status-indicator';
+                if (sensorStatusEl) sensorStatusEl.className = 'status-indicator';
+                debugLog('Connection status: Connected');
+            } else {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'connection-status disconnected';
+                if (indicatorEl) indicatorEl.className = 'status-indicator offline';
+                if (sensorStatusEl) sensorStatusEl.className = 'status-indicator offline';
+                debugLog('Connection status: Disconnected');
+            }
+        }
+
+        // Fetch data from ESP32
+        async function fetchESP32Data() {
+    const url = `http://${ESP32_IP}:${ESP32_PORT}/data`;
+
+    try {
+        debugLog(`Fetching: ${url}`);
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            mode: 'cors',
+            cache: 'no-cache'
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        // Expecting: { "force_N": 12.3, "resistance_kOhm": ..., "adc_value": ..., ... }
+        const value = data.force_N ?? data.value ?? 0;
+
+        if (typeof value === "number" && !isNaN(value)) {
+            updateConnectionStatus(true);
+            addSensorReading(value);
+        } else {
+            throw new Error("Invalid data structure");
+        }
+    } catch (err) {
+        debugLog(`Fetch failed: ${err.message}`);
+        updateConnectionStatus(false);
+    }
+}
+
+            // If all endpoints fail
+            updateConnectionStatus(false);
+            debugLog('All endpoints failed');
+        }
+
+        // Add new sensor reading
+        function addSensorReading(value, timestamp = null) {
+            if (!timestamp) {
+                timestamp = new Date();
+            }
+
+            const reading = {
+                value: parseFloat(value),
+                timestamp: timestamp,
+                id: sensorData.length + 1
+            };
+
+            sensorData.push(reading);
+
+            if (sensorData.length > 50) {
+                sensorData.shift();
+                sensorData.forEach((item, index) => {
+                    item.id = index + 1;
+                });
+            }
+
+            updateDisplay(reading);
+            updateChart();
+            updateHistoricalTable();
+            updateStats();
+        }
+
+        // Update current value display
+        function updateDisplay(reading) {
+            const valueEl = document.getElementById('currentValue');
+            const timestampEl = document.getElementById('lastUpdate');
+
+            if (reading.value !== lastValue) {
+                valueEl.classList.add('value-changed');
+                setTimeout(() => valueEl.classList.remove('value-changed'), 300);
+            }
+
+            valueEl.innerHTML = `${reading.value.toFixed(1)}<span class="sensor-unit">N</span>`;
+            timestampEl.textContent = `Last updated: ${reading.timestamp.toLocaleTimeString()}`;
+            lastValue = reading.value;
+            
+            debugLog(`Value updated: ${reading.value.toFixed(1)} N`);
+        }
+
+        // Update chart
+        function updateChart() {
+            if (!chart || isPaused) return;
+
+            const labels = sensorData.map(item => item.timestamp.toLocaleTimeString());
+            const values = sensorData.map(item => item.value);
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = values;
+            chart.update('none');
+        }
+
+        // Update historical table
+        function updateHistoricalTable() {
+            const tbody = document.getElementById('historicalTable');
+            
+            if (sensorData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #9ca3af;">No data available</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = sensorData
+                .slice()
+                .reverse()
+                .map(item => `
+                    <tr>
+                        <td>${item.id}</td>
+                        <td>${item.value.toFixed(1)} N</td>
+                        <td>${item.timestamp.toLocaleTimeString()}</td>
+                    </tr>
+                `).join('');
+        }
+
+        // Update statistics
+        function updateStats() {
+            if (sensorData.length === 0) {
+                document.getElementById('minValue').textContent = '0';
+                document.getElementById('maxValue').textContent = '0';
+                document.getElementById('avgValue').textContent = '0';
+                return;
+            }
+
+            const values = sensorData.map(item => item.value);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+            document.getElementById('minValue').textContent = min.toFixed(1);
+            document.getElementById('maxValue').textContent = max.toFixed(1);
+            document.getElementById('avgValue').textContent = avg.toFixed(1);
+        }
+
+        // Test connection
+        async function testConnection() {
+            debugLog('Manual connection test started');
+            await fetchESP32Data();
+        }
+
+        // Start ESP32 connection
+        function startESP32Connection() {
+            debugLog('Starting ESP32 connection...');
+            updateConnectionStatus(false);
+            
+            if (fetchInterval) {
+                clearInterval(fetchInterval);
+            }
+
+            // Initial fetch
+            fetchESP32Data();
+            
+            // Set up regular polling
+            fetchInterval = setInterval(() => {
+                if (!isPaused) {
+                    fetchESP32Data();
+                }
+            }, FETCH_INTERVAL);
+        }
+
+        // Stop ESP32 connection
+        function stopESP32Connection() {
+            if (fetchInterval) {
+                clearInterval(fetchInterval);
+                fetchInterval = null;
+            }
+            updateConnectionStatus(false);
+            debugLog('ESP32 connection stopped');
+        }
+
+        // Reconnect to ESP32
+        function reconnectESP32() {
+            debugLog('Manual reconnection requested');
+            stopESP32Connection();
+            setTimeout(() => {
+                startESP32Connection();
+            }, 1000);
+        }
+
+        // Clear chart
+        function clearChart() {
+            if (chart) {
+                chart.data.labels = [];
+                chart.data.datasets[0].data = [];
+                chart.update();
+            }
+            debugLog('Chart cleared');
+        }
+
+        // Toggle pause
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pauseText').textContent = isPaused ? 'Resume' : 'Pause';
+            debugLog(`Data collection ${isPaused ? 'paused' : 'resumed'}`);
+            
+            if (!isPaused) {
+                updateChart();
+            }
+        }
+
+        // Clear history
+        function clearHistory() {
+            sensorData = [];
+            updateHistoricalTable();
+            updateStats();
+            clearChart();
+            
+            document.getElementById('currentValue').innerHTML = '0<span class="sensor-unit">N</span>';
+            document.getElementById('lastUpdate').textContent = 'Last updated: Never';
+            debugLog('History cleared');
+        }
+
+        // Download CSV
+        function downloadCSV() {
+            if (sensorData.length === 0) {
+                alert('No data to download');
+                return;
+            }
+
+            const csvContent = [
+                'ID,Value (N),Timestamp',
+                ...sensorData.map(item => 
+                    `${item.id},${item.value},${item.timestamp.toISOString()}`
+                )
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fsr_sensor_data_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            debugLog('CSV download initiated');
+        }
+
+        // Initialize application
+        function init() {
+            debugLog('Dashboard initializing...');
+            initChart();
+            updateConnectionStatus(false);
+            
+            // Small delay to ensure DOM is ready
+            setTimeout(() => {
+                startESP32Connection();
+            }, 500);
+        }
+
+        // Start application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', init);
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                debugLog('Page hidden - stopping connection');
+                stopESP32Connection();
+            } else {
+                debugLog('Page visible - starting connection');
+                startESP32Connection();
+            }
+        });
+
+        // Global error handler
+        window.addEventListener('error', (event) => {
+            debugLog(`Global error: ${event.error.message}`);
+            console.error('Global error:', event.error);
+        });
+    </script>
+</body>
+</html>
