@@ -355,8 +355,10 @@
 
     <div class="container">
         <div class="header">
-            <h1>ESP32 FSR Sensor Dashboard</h1>
-            <p>Real-time Force Sensitive Resistor monitoring</p>
+            <h1>ESP32 Pressure Sensor Dashboard</h1>
+            <p>
+                Real-time pressure monitoring (converted from FSR ADC to mmHg, range: 16–21 mmHg)
+            </p>
         </div>
 
         <div class="dashboard-grid">
@@ -461,7 +463,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'FSR Sensor Value',
+                    label: 'Pressure (mmHg)', // <-- updated label
                     data: [],
                     borderColor: '#10b981',
                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
